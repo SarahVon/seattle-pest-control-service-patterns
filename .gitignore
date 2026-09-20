@@ -1,0 +1,20 @@
+# Private and intermediate inputs
+*.xlsx
+*.xls
+*.csv
+*.RData
+*.rds
+.Rhistory
+.Rproj.user/
+rsconnect/
+*.Rproj
+*.docx
+POSIT LINK.txt
+.DS_Store
+Thumbs.db
+# spatial data and sidecars
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg

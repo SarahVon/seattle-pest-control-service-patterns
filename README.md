@@ -49,7 +49,7 @@ The main roles are `readxl` for workbook import, `lubridate` and `tidyverse` for
 
 The source table contains proprietary service information collected by a local pest-control company. The original records include fields such as service dates, manually entered pest targets, addresses, and geocoding coordinates; operational records may also contain customer or business details. Those records are not published here.
 
-This repository intentionally excludes:
+I intentionally exclude:
 
 - raw or prepared Excel workbooks;
 - addresses, names, customer/business details, coordinates, or record-level rows;
@@ -83,7 +83,7 @@ prepared_file <- file.path(data_dir, "seattle_pests_2023.xlsx")
 
 Dates are converted with `lubridate::mdy()`. Seasons are assigned from the resulting month, and missing-value checks are run before spatial processing. The analysis retains the fields needed for the network: date, season, grouped target, and grouped region. Geometry is dropped before the final count table is built.
 
-The source also records the original scale of the import: more than 30,000 service entries were present before the Seattle filter. Exact row-level outputs are intentionally not reproduced in this README.
+The source also records the original scale of the import: more than 30,000 service entries were present before the Seattle filter. I do not reproduce exact row-level outputs here.
 
 ## Pest-category grouping
 
@@ -145,7 +145,7 @@ The same function is called once for the full year and once for each season. Thi
 
 ## Full-year and seasonal results
 
-The [published Posit report](https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/) contains the interactive full-year and seasonal graphs. They are not embedded in this repository because self-contained HTML can carry generated data in its payload.
+The [published Posit report](https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/) contains the interactive full-year and seasonal graphs. I link to the report rather than embedding self-contained HTML, because its payload can carry generated chart data.
 
 Reported patterns from the source analysis:
 
@@ -180,7 +180,7 @@ To rerun the analysis, obtain authorized copies of the private source workbook, 
 rmarkdown::render("seattle-pest-service-patterns.Rmd")
 ```
 
-The repository's `.gitignore` is preserved to help prevent private and intermediate files from being staged. Reproduction requires access to the proprietary inputs, but it does **not** require committing those inputs or any rendered HTML containing generated chart data.
+The included `.gitignore` helps prevent private and intermediate files from being staged. Reproduction requires access to the proprietary inputs, but it does **not** require committing those inputs or any rendered HTML containing generated chart data.
 
 ## Repository contents
 

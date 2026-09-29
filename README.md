@@ -1,189 +1,113 @@
 # Seattle Pest Control Service Patterns: A Two-Mode Network Analysis (2023)
 
-**Published results:** [open the interactive report on Posit Connect Cloud](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)
-**Public source:** [`seattle-pest-service-patterns.Rmd`](seattle-pest-service-patterns.Rmd)
+**Published results:** [Open the interactive report on Posit Connect Cloud](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)  
+**Project source:** [`seattle-pest-service-patterns.Rmd`](seattle-pest-service-patterns.Rmd)
 
-This analysis describes how a Seattle pest-control company's 2023 service activity varied by broad pest category, grouped region, and season. It uses a **two-mode (bipartite) network**: one node set is pest categories, the other is seven Seattle analysis regions, and weighted edges count service records connecting them.
+This project explores how pest-control service activity varied across Seattle neighborhoods and seasons in 2023. Using R, spatial joins, and interactive bipartite graphs, I transformed service records into a view of which pest categories were most common and where those services occurred.
+
+A service record may represent a confirmed issue, suspected problem, or preventative treatment, not necessarily a pest sighting.
 
 ## Contents
 
-- [Purpose and research question](#purpose-and-research-question)
-- [Setup and packages](#setup-and-packages)
-- [Data and privacy boundary](#data-and-privacy-boundary)
-- [Import and preparation workflow](#import-and-preparation-workflow)
-- [Cleaning and preparation](#cleaning-and-preparation)
-- [Pest-category grouping](#pest-category-grouping)
-- [Summary calculations](#summary-calculations)
-- [Neighborhood and region grouping](#neighborhood-and-region-grouping)
-- [Bipartite graph construction](#bipartite-graph-construction)
-- [Full-year and seasonal results](#full-year-and-seasonal-results)
-- [Conclusion and limitations](#conclusion-and-limitations)
-- [Reproducibility](#reproducibility)
+- [Project Overview](#project-overview)
+- [Data and Privacy](#data-and-privacy)
+- [Data Preparation](#data-preparation)
+- [Spatial Analysis](#spatial-analysis)
+- [Bipartite Network Analysis](#bipartite-network-analysis)
+- [Results](#results)
+- [Limitations](#limitations)
+- [Data Sources](#data-sources)
 
-## Purpose and research question
+## Project Overview
 
-The goal is to make service-pattern relationships easier to inspect than a long list of individual records. The analysis asks:
+The analysis combines more than 30,000 service records from a local Seattle pest-control company with neighborhood boundary data from the Seattle City GIS Open Data Portal.
+
+The workflow uses R for data preparation, geocoding, spatial analysis, aggregation, and interactive network visualization. Key packages include `tidyverse`, `lubridate`, `tidygeocoder`, `sf`, `bipartiteD3`, and `RColorBrewer`.
+
+The analysis focuses on three questions:
 
 1. Which broad pest categories account for the most service activity?
-2. How do category–region relationships differ across Seattle?
-3. How do those relationships change between winter, spring, summer, and fall?
-4. What does an interactive bipartite graph reveal that category or region totals alone do not?
+2. How are those services distributed across Seattle?
+3. How do these patterns change by season?
 
-A service record indicates that a pest-control service was requested or performed. It is **not necessarily a confirmed sighting**, population estimate, or causal observation.
+## Data and Privacy
 
-## Setup and packages
+The service data is proprietary and is not included in this repository. To protect customer privacy, individual addresses, coordinate values, and record-level service data are not published.
 
-The public R Markdown source uses a private-input directory rather than an absolute machine-specific path. Install R and the packages below (and the system dependencies required by `sf`):
+The public project includes the analysis workflow, aggregated results, and interactive visualizations without identifying the company or its customers.
 
-```r
-install.packages(c(
-  "bipartiteD3", "bipartite", "readxl", "r2d3", "tidyverse",
-  "RColorBrewer", "sf", "rnaturalearth", "rnaturalearthdata",
-  "patchwork", "writexl", "tidygeocoder", "lubridate", "printr"
-))
-```
+## Data Preparation
 
-The main roles are `readxl` for workbook import, `lubridate` and `tidyverse` for preparation and summaries, `sf` for spatial joins, `tidygeocoder` for the original geocoding workflow, and `bipartiteD3` for interactive network charts. `bipartite`, `r2d3`, and `RColorBrewer` support network analysis, D3 rendering, and node colors.
+Service records were filtered to Seattle addresses and service dates were standardized and grouped into winter, spring, summer, and fall.
 
-## Data and privacy boundary
+Because technician-entered pest labels were not standardized, related labels were consolidated into broader categories:
 
-The source table contains proprietary service information collected by a local pest-control company. The original records include fields such as service dates, manually entered pest targets, and addresses; operational records may also contain customer or business details. Those records are not published here.
+- Ants
+- Rodents
+- Cockroaches
+- Biting Insects
+- Storage and Structure Pests
+- Stinging Insects
+- Spiders
+- Flying Insects
+- Misc Crawling Insects
 
-This repository intentionally excludes:
+This grouping improves comparison across the network while reducing detail within individual pest classifications.
 
-- raw or prepared Excel workbooks;
-- addresses, names, customer/business details, coordinates, or record-level rows;
-- the Seattle neighborhood shapefile and its sidecar files;
-- rendered self-contained HTML whose embedded interactive payload could expose generated chart data;
-- `.RData`, history, deployment, or `rsconnect` files.
+## Spatial Analysis
 
-The public Rmd documents the method with private file names resolved through `SEATTLE_PEST_DATA_DIR`; it does not print private values or record-level data. Do not treat the public repository as a data release.
+Service addresses were geocoded to latitude and longitude and converted to spatial points using `sf`.
 
-## Import and preparation workflow
+Seattle sub-neighborhood boundaries from the Seattle City GIS Open Data Portal were transformed from their source coordinate reference system (EPSG:2926) to WGS84 (EPSG:4326). A spatial join using `st_within()` then assigned each service location to a sub-neighborhood.
 
-The complete workflow is:
+To keep the network visualizations readable, the sub-neighborhoods were grouped into seven project-defined Seattle regions:
 
-1. Read the private service workbook and retain records whose address is in Seattle.
-2. Parse the service date and derive a season: winter (December–February), spring (March–May), summer (June–August), or fall (September–November).
-3. Use cached latitude and longitude prepared from the service address. Geocoding is documented but is not rerun during ordinary rendering.
-4. Transform Seattle neighborhood boundaries from the source CRS (EPSG:2926) to WGS84 (EPSG:4326).
-5. Convert service points to an `sf` object and spatially join points within neighborhood polygons.
-6. Collapse technician-entered pest labels and neighborhood names into analysis categories.
-7. Read the authorized prepared analysis table and aggregate category–region counts for full-year and seasonal graphs.
+- NW Seattle
+- NE Seattle
+- Magnolia/Queen Anne
+- Central Seattle
+- Downtown Seattle
+- West Seattle
+- South/SE Seattle
 
-The public Rmd uses paths of this form, with no private path committed:
+These groupings were created specifically for this analysis and are not official administrative units.
 
-```r
-data_dir <- Sys.getenv("SEATTLE_PEST_DATA_DIR", "data-private")
-raw_file <- file.path(data_dir, "sea_pests.xlsx")
-prepared_file <- file.path(data_dir, "seattle_pests_2023.xlsx")
-```
+## Bipartite Network Analysis
 
-## Cleaning and preparation
+The final visualization uses a two-mode, or bipartite, network connecting two sets of nodes:
 
-Dates are converted with `lubridate::mdy()`. Seasons are assigned from the resulting month, and missing-value checks are run before spatial processing. The analysis retains the fields needed for the network: date, season, grouped target, and grouped region. Geometry is dropped before the final count table is built.
+- **Pest categories**
+- **Seattle regions**
 
-The source also records the original scale of the import: more than 30,000 service entries were present before the Seattle filter. Exact row-level outputs are intentionally not reproduced in this README.
+Connections between them are weighted by the number of service records associated with each category-region combination.
 
-## Pest-category grouping
+A reusable R function aggregates the data, constructs the category-by-region matrix, orders categories and regions by service frequency, and generates an interactive `bipartiteD3` visualization. The same function is used for the full-year analysis and each season so the results remain comparable.
 
-Technician-entered targets were not standardized, so related labels were consolidated with `dplyr::case_when()`. The broad categories are:
+## Results
 
-| Analysis category | Examples consolidated |
-| --- | --- |
-| Ants | carpenter, nuisance, pavement, odorous, moisture, and general ants |
-| Rodents | mice, rats, vertebrate, and general rodent labels |
-| Cockroaches | cockroach labels retained as a category |
-| Biting Insects | bed bugs, fleas, and mites |
-| Flying Insects | house flies and other non-stinging flying-insect labels |
-| Stinging Insects | wasps, hornets, and related labels |
-| Storage and Structure Pests | fabric pests, food-storage pests, beetles, and termites |
-| Spiders | spider labels retained as a category |
-| Misc Crawling Insects | other labels not mapped into the principal groups |
+Across the full year, rodents accounted for **46.78%** of service records, followed by ants (**31.23%**) and cockroaches (**15.74%**).
 
-This grouping improves readability but trades away species- and label-level detail.
+Rodents were the largest category in winter, spring, and fall. Summer was the only season in which ants surpassed rodents, accounting for **40.45%** of records compared with **39.80%** for rodents.
 
-## Summary calculations
+The network also highlights geographic patterns. Ant services had a strong connection with West Seattle, while cockroach services were concentrated in Downtown and South/SE Seattle.
 
-For each time period, the analysis counts records by `Target` and `Neighborhood`:
+The interactive full-year and seasonal networks can be explored in the [published Posit report](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/).
 
-```r
-counts <- data |>
-  dplyr::count(Target, Neighborhood, name = "Sightings")
+## Limitations
 
-matrix <- counts |>
-  tidyr::pivot_wider(
-    names_from = Neighborhood,
-    values_from = Sightings,
-    values_fill = 0
-  ) |>
-  tibble::column_to_rownames("Target") |>
-  as.matrix()
-```
+The results describe service activity rather than pest prevalence across Seattle. Interpretation is limited by:
 
-Category and region totals are calculated with `count()`/`summarise(n())`, sorted descending, and expressed as percentages of the selected period. The graph's percentages therefore describe the distribution of service records in that period—not the prevalence of pests in Seattle.
-
-## Neighborhood and region grouping
-
-Service points are joined to the [Seattle City GIS neighborhood boundaries](https://data-seattlecitygis.opendata.arcgis.com/datasets/b4a142f592e94d39a3bf787f3c112c1d/explore). To keep the network legible, sub-neighborhoods are mapped into seven analysis regions:
-
-- **NW Seattle**
-- **NE Seattle**
-- **Magnolia/Queen Anne**
-- **Central Seattle**
-- **Downtown Seattle**
-- **West Seattle**
-- **South/SE Seattle**
-
-These are project-defined geographic groupings, not official administrative units. Unmatched points can be lost from the grouped network, and the aggregation hides variation among individual neighborhoods.
-
-## Bipartite graph construction
-
-`bipartiteD3::bipartite_D3()` receives the category-by-region matrix. Pest categories form the primary nodes, regions form the secondary nodes, and each edge width is proportional to the number of service records in that category–region pair. Nodes are sorted by their total counts, pest nodes use a manual `RColorBrewer::Paired` palette, and the graph exposes percentages interactively.
-
-The same function is called once for the full year and once for each season. This makes the charts comparable while allowing the network structure and dominant edges to change with the time filter.
-
-## Full-year and seasonal results
-
-The [published Posit report]([https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)) contains the interactive full-year and seasonal graphs. They are not embedded in this repository because self-contained HTML can carry generated data in its payload.
-
-Reported patterns from the source analysis:
-
-- **Full year:** rodents accounted for **46.78%** of records, ants **31.23%**, and cockroaches **15.74%**. Rodents were especially prominent in South/SE and Central Seattle; ants had a strong West Seattle connection; cockroaches were concentrated in Downtown and South/SE Seattle.
-- **Winter:** rodents **54.58%**, ants **21.80%**, cockroaches **18.59%**.
-- **Spring:** rodents **46.52%**, ants **35.79%**, cockroaches **13.93%**.
-- **Summer:** ants led at **40.45%**, followed by rodents at **39.80%** and cockroaches at **13.23%**.
-- **Fall:** rodents **47.21%**, ants **25.83%**, and cockroaches **17.52%**.
-
-Across seasons, the graphs show rodents as the leading category except in summer, when ants lead. Cockroach edges remain especially visible in Downtown Seattle. Smaller categories collectively make up less than 10% of annual activity in the source summary, though their relative share can still matter in a seasonal or regional slice.
-
-## Conclusion and limitations
-
-The network view makes two kinds of structure visible at once: which pest categories dominate overall and which regions account for each category's activity. The clearest recurring pattern is a contrast between rodent-heavy colder periods and a summer increase in ant activity, alongside persistent Downtown connections for cockroaches.
-
-Interpretation is limited by:
-
-- service demand and preventive contracts rather than a random sample of pest presence;
+- service demand and preventative contracts rather than a random sample of pest presence;
 - repeat visits and customer mix;
 - inconsistent technician-entered labels and broad category consolidation;
-- geocoding quality, spatial-join misses, and region definitions created for this analysis;
-- a single company's Seattle service records from 2023;
+- geocoding quality, spatial-join misses, and project-defined region boundaries;
+- use of a single company's Seattle service records from 2023; and
 - interactive-package constraints on labels, layout, and customization.
 
-These results are descriptive. They should not be used as citywide prevalence estimates or causal claims.
+These results are descriptive and should not be interpreted as citywide prevalence estimates or causal relationships.
 
-## Reproducibility
+## Data Sources
 
-To rerun the analysis, obtain authorized copies of the private source workbook, prepared workbook, and complete neighborhood shapefile separately. Place them in a local directory outside version control, set `SEATTLE_PEST_DATA_DIR` to that directory, and render:
+**Service records:** Proprietary 2023 data from a local pest-control company. The company is not identified, and the underlying records are not publicly shared.
 
-```r
-rmarkdown::render("seattle-pest-service-patterns.Rmd")
-```
-
-The repository's `.gitignore` is preserved to help prevent private and intermediate files from being staged. Reproduction requires access to the proprietary inputs, but it does **not** require committing those inputs or any rendered HTML containing generated chart data.
-
-## Repository contents
-
-- `seattle-pest-service-patterns.Rmd` — sanitized, public workflow and setup.
-- `README.md` — methods, interpretation, privacy boundary, and reproduction guidance.
-- `.gitignore` — safeguards for private and generated files.
+**Neighborhood boundaries and reference map:** City of Seattle, Office of Planning and Community Development. *Neighborhood Map Atlas—Neighborhoods* (`cityclerk_nma_nhoods`) [GIS dataset]. Derived from the Seattle City Clerk's Office Geographic Indexing Atlas. Available through the [Seattle City GIS Open Data Portal](https://data-seattlecitygis.opendata.arcgis.com/datasets/b4a142f592e94d39a3bf787f3c112c1d/explore). Metadata updated December 1, 2020.

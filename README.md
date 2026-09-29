@@ -1,6 +1,6 @@
 # Seattle Pest Control Service Patterns: A Two-Mode Network Analysis (2023)
 
-**Published results:** [open the interactive report on Posit Connect Cloud](https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/)
+**Published results:** [open the interactive report on Posit Connect Cloud]([https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/))
 **Public source:** [`seattle-pest-service-patterns.Rmd`](seattle-pest-service-patterns.Rmd)
 
 This analysis describes how a Seattle pest-control company's 2023 service activity varied by broad pest category, grouped region, and season. It uses a **two-mode (bipartite) network**: one node set is pest categories, the other is seven Seattle analysis regions, and weighted edges count service records connecting them.
@@ -145,7 +145,7 @@ The same function is called once for the full year and once for each season. Thi
 
 ## Full-year and seasonal results
 
-The [published Posit report](https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/) contains the interactive full-year and seasonal graphs. They are not embedded in this repository because self-contained HTML can carry generated data in its payload.
+The [published Posit report]([https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)) contains the interactive full-year and seasonal graphs. They are not embedded in this repository because self-contained HTML can carry generated data in its payload.
 
 Reported patterns from the source analysis:
 

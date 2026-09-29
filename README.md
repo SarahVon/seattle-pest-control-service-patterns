@@ -1,6 +1,6 @@
 # Seattle Pest Control Service Patterns: A Two-Mode Network Analysis (2023)
 
-**Published results:** [open the interactive report on Posit Connect Cloud]([https://01a0bc03-40b2-ca8c-6045-21517970ca76.share.connect.posit.cloud/](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)
+**Published results:** [open the interactive report on Posit Connect Cloud](https://01a0eab7-b176-9103-0ac6-0aeca19f42c3.share.connect.posit.cloud/)
 **Public source:** [`seattle-pest-service-patterns.Rmd`](seattle-pest-service-patterns.Rmd)
 
 This analysis describes how a Seattle pest-control company's 2023 service activity varied by broad pest category, grouped region, and season. It uses a **two-mode (bipartite) network**: one node set is pest categories, the other is seven Seattle analysis regions, and weighted edges count service records connecting them.

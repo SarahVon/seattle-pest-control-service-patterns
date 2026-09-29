@@ -1,6 +1,7 @@
 ---
 title: "Seattle Pest Control Service Patterns: A Two-Mode Network Analysis (2023)"
-author: "By: Sarah Anderson"
+author: "Sarah Von Anderson"
+date: "2024-06-03"
 output:
   html_document:
     toc: true
@@ -9,79 +10,113 @@ output:
 
 # Overview
 
-This analysis explores how pest control service records from **a local pest control company** varied across Seattle in 2023. Interactive two-mode charts connect pest categories to seven grouped city regions, with views for the full year and each season.
+This project explores how pest-control service activity varied across Seattle Neighborhoods and seasons in 2023. Using R, spatial joins, and interactive bipartite graphs, I turned service records into a view of which pest categories were most common and where those services occurred.
 
-Each record represents a service associated with a pest category and location; it is **not necessarily a confirmed sighting**. The charts describe this company's service activity, not citywide pest prevalence. The underlying service records are private and are not included in the published report or repository.
+A service record may represent a confirmed issue, a suspected problem, or preventative treatment, not necessarily a pest sighting.
 
-## Approach
+# Data Overview
 
-Service addresses were filtered to Seattle, geocoded for spatial matching, and assigned to Seattle neighborhood boundaries. Inconsistent pest labels were consolidated into broader categories, and sub-neighborhoods were grouped into seven regions to make the network legible. Seasonal charts use the service date (winter: December–February; spring: March–May; summer: June–August; fall: September–November).
+This analysis combines more than 30,000 service records from a local Seattle pest-control company with neighborhood boundary data from the Seattle City GIS Open Data Portal. The fields below are the primary variables used in the analysis. To protect customer privacy, individual addresses and coordinate values are not included in the published project.
 
-The interactive charts use a prepared 2023 analysis table derived from this workflow. The private source and prepared files are required to rerun the code. No individual addresses, coordinates, customer details, or record-level previews are displayed below.
+| Field | Description |
+| --- | --- |
+| `Date` | Service date. |
+| `Season` | Winter, spring, summer, or fall, derived from the service month. |
+| `Target` | Recorded pest label, consolidated into broader categories. |
+| `Address` | Service address, used for the Seattle filter and original geocoding. |
+| `Latitude`, `Longitude` | Coordinates used to assign service locations to neighborhoods. |
+| `Neighborhood` | One of seven Seattle neighborhoods defined for this project. |
+| `L_HOOD`, `S_HOOD`, `S_HOOD_ALT` | Neighborhood, sub-neighborhood, and alternate names from the boundary layer; `S_HOOD` is used for larger Neighborhood grouping. |
 
+**Nodes:** two sets—pest categories and the seven broader Seattle neighborhoods.  
+**Edges:** connections between a pest category and a neighborhood, weighted by the number of service records.
 
-```{r setup, include=FALSE}
-# Private-input location. Keep source data outside this repository.
-data_dir <- Sys.getenv("SEATTLE_PEST_DATA_DIR", "data-private")
-raw_file <- file.path(data_dir, "sea_pests.xlsx")
-prepared_file <- file.path(data_dir, "seattle_pests_2023.xlsx")
-neighborhoods_file <- file.path(data_dir, "Neighborhood_Map_Atlas_Neighborhoods.shp")
+# Import and Preparation
 
-# Install necessary packages (uncomment if not already installed)
+## Packages
+
+The workflow uses `readxl` for data import, `tidyverse` and `lubridate` for data preparation, `tidygeocoder` and `sf` for geocoding and spatial analysis, and `bipartiteD3` with `RColorBrewer` for interactive network visualization.
+
+```{r setup, echo=TRUE, message=FALSE, warning=FALSE, results='hide', include=FALSE}
+# installing packages if needed (uncomment to run)
 # install.packages(c("bipartiteD3", "bipartite", "readxl", "r2d3", "tidyverse", "RColorBrewer", "sf", "rnaturalearth", "rnaturalearthdata", "patchwork", "writexl", "tidygeocoder", "lubridate", "printr"))
 
-# loading the necessary libraries
-library(bipartiteD3)        # for creating interactive bipartite graphs
-library(bipartite)          # for analyzing bipartite graphs
-library(readxl)             # for reading excel files
-library(r2d3)               # for creating d3 visualizations
-library(tidyverse)          # includes dplyr, ggplot2, and other packages for data manipulation and visualization
-library(RColorBrewer)       # for creating custom color palettes
-library(sf)                 # for handling spatial data
-library(rnaturalearth)      # for downloading natural earth map data
-library(rnaturalearthdata)  # companion package for rnaturalearth
-library(writexl)               # for writing data to excel files
-library(tidygeocoder)       # for geocoding addresses to obtain latitude and longitude
-library(lubridate)          # for handling date and time data
-library(printr)             # for printing data frames in a nice format
 ```
+
+```{r setup libraries, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# loading the necessary libraries
+library(bipartiteD3)        
+library(bipartite)          
+library(readxl)             
+library(tidyverse)          
+library(RColorBrewer)       
+library(sf)                 
+library(tidygeocoder)       
+library(lubridate)          
+```
+
+## Reading the Data
+
+The Excel workbook is read into R and filtered to only include Seattle addresses. This excerpt shows the import and filter; the working local directory settings are kept out of the displayed code.
+
+```r
+# reading the service workbook
+sea_pests <- read_excel("sea_pests.xlsx")
+
+sea_pests <- sea_pests %>%
+  filter(grepl("Seattle", Address, ignore.case = TRUE))
+```
+
 ```{r data-import, include=FALSE}
-# Read private source data from this project directory.
-sea_pests <- read_excel(raw_file)
+# setting our working directory and reading the data
+setwd("removed")
+knitr::opts_knit$set(root.dir = getwd())
+sea_pests <- read_excel("sea_pests.xlsx")
 
 # filtering to only include Seattle addresses
 sea_pests <- sea_pests %>%
   filter(grepl("Seattle", Address, ignore.case = TRUE))
 ```
+
 ```{r data-verify, include=FALSE}
 # showing the number of rows after filtering (original 30,409 entries)
 nrow(sea_pests)
 ```
-```{r geocoding, include=FALSE}
+
+## Geocoding Addresses
+
+I used `tidygeocoder` to obtain latitude and longitude from service addresses so the records could be assigned to neighborhoods.
+
+```{r geocoding, echo=TRUE}
 # creating a new variable called 'coordinates' that takes the addresses and
 # uses tidygeocoder to convert them to lat/long coordinates
 
-# Geocoding is not rerun during rendering; coordinates are cached in the source data.
-# sea_pests$coordinates <- tidygeocoder::geo(sea_pests$Address)
+sea_pests$coordinates <- tidygeocoder::geo(sea_pests$Address)
 
-# renaming the column 'coordinates$lat' to latitude and 'coordinates$long' to longitude
-# and only keeping the necessary columns
+# renaming columns for clarity and only keeping the necessary ones
 sea_pests <- sea_pests %>%
   # mutate(Latitude = coordinates$lat,
          # Longitude = coordinates$long) %>%
   select(Date, Target, Latitude, Longitude)
 ```
-```{r geocoding-verify, include=FALSE}
-# show all column names to make sure the new columns were added and named correctly
+
+```{r geocoding-verify, echo=TRUE}
+# show column names to make sure the new columns were added and named correctly
 colnames(sea_pests)
 ```
-```{r data-cleaning, include=FALSE}
 
-#  converting the data in our 'Date' column to Date format using the 'lubridate' package
+
+## Dates and Seasons
+
+Service dates are parsed with `mdy()`, then assigned to winter (December–February), spring (March–May), summer (June–August), or fall (September–November). Winter combines the winter months within the 2023 calendar year.
+
+```{r data-cleaning, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+
+# converting service dates to a consistent date format
 sea_pests <- sea_pests %>%
   mutate(Date = mdy(Date))
 
-# adding a 'Season' column based on the Month
+# assigning a season based on the service month
 sea_pests <- sea_pests %>%
   mutate(Season = case_when(
     month(Date) %in% c(12, 1, 2) ~ "Winter",
@@ -91,13 +126,35 @@ sea_pests <- sea_pests %>%
     TRUE ~ NA_character_
   ))
 ```
-```{r data-cleaning-verify, include=FALSE}
-# checking for any NA values in the dataframe
+
+
+```{r data-cleaning-verify, echo=TRUE, message=FALSE, warning=FALSE, include=FALSE}
+# checking for missing values before continuing
 sum(is.na(sea_pests))
 ```
+
 ```{r data-clean-verify, include=FALSE}
-# The cleaned service records are used for the spatial join below.
+# checking that our date is formatted and our season column was created
+sea_pests %>% slice_head(n = 1)
 ```
+
+
+# Pest-Category Grouping
+
+Pest labeling was not standardized, so related labels were consolidated into broader categories. This makes the graphs easier to compare while reducing detail within each group.
+
+| Category                     | Types                                                                 |
+|------------------------------|----------------------------------------------------------------------|
+| **Ants**                     | Carpenter, Nuisance, Pavement, Odorous House, Moisture, and other Misc/General Ants |
+| **Rodents**                  | Mice, Rats, Misc. Vertebrates     |
+| **Cockroaches**              | General, German, American, and Oriental Cockroaches |
+| **Biting Insects**           | Bed Bugs, Fleas, Mites                                                |
+| **Storage and Structure Pests** | Fabric Pests (moths, carpet beetles), Food Storage Pests (non wood-destroying storage beetles, weevils), Wood-Destroying Beetles, Termites     |
+| **Stinging Insects**         | Wasps, Hornets                                                       |
+| **Spiders**                  | General Spiders                                                      |
+| **Flying Insects**           | House, Fruit, and Drain Flies. Other Misc general non-stinging Flying Insects                                  |
+| **Misc Crawling Insects**    | Silverfish, Stinkbugs, Other Crawling Insects                        |
+
 ```{r pest-grouping, include=FALSE}
 
 # the names used below to create the broader groups are based on the original pest types that are manually logged when completing a service. These are documented by technicians while they are on site and are, unfortunately, not standardized.
@@ -129,39 +186,64 @@ sea_pests <- sea_pests %>%
     TRUE ~ Target  # Do not change other entries
   ))
 ```
+
+
 ```{r pest-grouping-verify, include=FALSE}
-# creating a table to show the counts of each pest category
+# creating a table to show the counts of each pest category to peep the distribution
 sea_pests %>%
   group_by(Target) %>%
   summarise(Count = n(), .groups = 'drop') %>%
   arrange(desc(Count))
 ```
-```{r neighborhood-grouping, include=FALSE}
 
-# reading in the shapefile to define neighborhood boundaries based on coordinates
-neighborhoods <- sf::st_read(neighborhoods_file)
 
-# checking the coordinate reference systems (CRS) of both datasets
+# Neighborhood Grouping
+
+I downloaded the Seattle sub-neighborhood boundary shapefile from the [Seattle City GIS open data portal](https://data-seattlecitygis.opendata.arcgis.com/datasets/b4a142f592e94d39a3bf787f3c112c1d/explore). Figure 1 (below) comes from the same portal and provides a reference for the boundaries used to assign service locations to neighborhoods.
+
+<div style="margin: 25px 0; text-align: center;">
+  <img src="seattle_map.png"
+       alt="Seattle Sub-Neighborhoods Map"
+       style="width: 40%; height: auto;"/>
+
+  <p><em>Figure 1. Seattle Sub-Neighborhoods.</em></p>
+</div>
+
+## Assigning Service Locations to Sub-Neighborhoods
+
+The downloaded boundaries were transformed to WGS84 (EPSG:4326) to match the geocoded service coordinates. I then converted the service locations to spatial points and used `st_within()` in a spatial join to identify the sub-neighborhood containing each point.
+
+```{r neighborhood-grouping, echo=TRUE, results='hide', message=FALSE, warning=FALSE}
+
+# reading the neighborhood boundaries downloaded from the Seattle GIS portal
+neighborhoods <- sf::st_read("Neighborhood_Map_Atlas_Neighborhoods.shp")
+
+# checking the coordinate reference systems before the spatial join
+st_crs(sea_pests)  # coordinates are assigned a CRS when converted to sf
 st_crs(neighborhoods)  # 2926
 
-# because the CRS of the shapefile is 2926, we need to transform it to match the pest data
+# transforming the neighborhood boundaries to match the service coordinates
 neighborhoods <- st_transform(neighborhoods, crs = 4326)
 
-# converting pest data to spatial data frame
+# converting service coordinates to spatial points
 pest_sf <- st_as_sf(sea_pests, coords = c("Longitude", "Latitude"), crs = 4326)
 
-# joining the pest data with the neighborhood data
+# assigning service points to the neighborhoods they fall within
 pest_neighborhoods <- st_join(pest_sf, neighborhoods, join = st_within)
 ```
 
-Neighborhood assignments use the [Seattle City GIS neighborhood boundaries](https://data-seattlecitygis.opendata.arcgis.com/datasets/b4a142f592e94d39a3bf787f3c112c1d/explore?location=47.613935%2C-122.330735%2C11.49). The seven regions are analysis groupings, not official administrative units.
+```{r neighborhood-grouping-verify, include=FALSE}
+# checking the join without displaying individual service locations
+head(pest_neighborhoods)
+```
 
+## Grouping Sub-Neighborhoods into Neighborhoods
+
+To keep the network graphs readable, I grouped the sub-neighborhoods into seven broader neighborhoods/regions based on geographic proximity. These groupings were created for this project and are not official administrative units.
 
 ```{r neighborhood-grouping-continue, include=FALSE}
 
-# segmenting the myriad sub-neighborhoods into 7 distinct neighborhoods
-
-# define a mapping function for neighborhood groupings
+# defining the seven regional groupings
 get_custom_segment <- function(neighborhood) {
   if (neighborhood %in% c("Loyal Heights", "Ballard", "Whittier Heights", 
                           "West Woodland", "Phinney Ridge", "Wallingford", 
@@ -209,19 +291,61 @@ get_custom_segment <- function(neighborhood) {
   }
 }
 
-# apply the mapping function to create a new column for custom neighborhoods
+# assigning each sub-neighborhood to its project-defined larger neighborhood
 pest_neighborhoods <- pest_neighborhoods %>%
   mutate(Neighborhood = sapply(S_HOOD, get_custom_segment))
 ```
-```{r bipartite-data-prep, include=FALSE}
-# first we have to convert our data, which is currently still an sf object, back to a regular data frame
-# in this step we can also use the select function to get rid of the columns we no longer need
+
+```{r neighborhood-grouping-verify-2, include=FALSE}
+# checking the region assignments 
+head(pest_neighborhoods)
+```
+
+The mapping function uses the shapefile's `S_HOOD` field to assign each record to a region.
+
+
+```r
+# assigning each sub-neighborhood to its project-defined larger neighborhood
+pest_neighborhoods <- pest_neighborhoods %>%
+  mutate(Neighborhood = sapply(S_HOOD, get_custom_segment))
+```
+
+
+The table below lists the complete neighborhood mapping used in this project.
+
+| Neighborhood | Sub-Neighborhoods Included |
+| --- | --- |
+| **NW Seattle** | Loyal Heights, Ballard, Whittier Heights, West Woodland, Phinney Ridge, Wallingford, Fremont, Green Lake, Broadview, Bitter Lake, Haller Lake, North Beach/Blue Ridge, Licton Springs, Crown Hill, Greenwood, Sunset Hill |
+| **NE Seattle** | View Ridge, Ravenna, Sand Point, Bryant, Windermere, Laurelhurst, Roosevelt, University of Washington, Wedgwood, Victory Heights, Matthews Beach, Meadowbrook, Olympic Hills, Cedar Park, Pinehurst, Maple Leaf, University District, University Heights |
+| **Magnolia/Queen Anne** | East Queen Anne, West Queen Anne, Lower Queen Anne, North Queen Anne, Westlake, Lawton Park, Briarcliff, Southeast Magnolia, Interbay |
+| **Central Seattle** | Eastlake, Madrona, Harrison/Denny-Blaine, Minor, Leschi, Mann, First Hill, Yesler Terrace, Portage Bay, Montlake, Madison Park, Broadway, Stevens |
+| **Downtown Seattle** | South Lake Union, Pike-Market, Belltown, International District, Central Business District, Pioneer Square, Denny Triangle |
+| **West Seattle** | South Park, Seaview, Gatewood, Arbor Heights, Alki, North Admiral, Fairmount Park, Genesee, Fauntleroy, Highland Park, North Delridge, Riverview, High Point, South Delridge, Roxhill |
+| **South/SE Seattle** | Atlantic, SODO, Georgetown, North Beacon Hill, Mid-Beacon Hill, South Beacon Hill, Holly Park, Brighton, Dunlap, Rainier Beach, Rainier View, Mount Baker, Columbia City, Seward Park, Industrial District, Harbor Island |
+
+
+# Bipartite Graphs and Analysis
+
+Bipartite graphs connect two different sets of nodes — here, pest categories and Seattle regions. I chose to use Bipartite graphs because they show both the overall mix of services and the regional connections for each pest category in one view. Wider connections represent more service records.
+
+## Preparing the Graph Data
+
+After assigning neighborhoods and regions, the data is still stored as an sf object containing spatial geometry. To prepare it for the network visualizations, I remove the geometry, convert it to a regular data frame, and keep the four relevant fields: Date, Season, Target, and Neighborhood.
+
+```{r bipartite-data-prep, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+# dropping geometry and keeping the fields used in the network
 sea_pests_df <- as.data.frame(st_drop_geometry(pest_neighborhoods)) %>%
   select(Date, Season, Target, Neighborhood)
 ```
-```{r fix-data, include=FALSE}
-sea_pests_df <- read_excel(prepared_file)
-```
+
+## Reusable Network Function
+
+The function optionally filters to one season, counts records by pest category and region, and reshapes those counts into a matrix. Categories and regions are ordered by total frequency. The matrix supplies the weighted connections for `bipartite_D3()`.
+
+Using the same function for every period keeps the aggregation and chart settings consistent.
+
+A custom color palette using `RColorBrewer's` Paired palette was also created so consistent coloring can be used for each pest category across all five graphs.
+
 ```{r bipartite-colors, include=FALSE}
 
 # custom colors using RColorBrewer's Paired palette
@@ -240,16 +364,17 @@ custom_colors <- c(
   "Misc Crawling Insects" = paired_colors[6]
 )
 ```
-```{r bipartite-function, include=FALSE}
 
-# function to create bipartite graph for a given season using bipartiteD3 with sorting and coloring
+```{r bipartite-function, echo=TRUE, message=FALSE, warning=FALSE, results='hide'}
+
+# building the annual or seasonal graph with the same settings
 create_bipartiteD3_graph <- function(data, season = NULL) {
   if (!is.null(season)) {
-    # Filter data for the given season
+    # filtering to the selected season
     data <- data %>% filter(Season == season)
   }
   
-  # creating a matrix of sightings
+  # counting service records and arranging them in a pest-by-region matrix
   sightings_matrix <- data %>%
     group_by(Target, Neighborhood) %>%
     summarise(Sightings = n(), .groups = 'drop') %>%
@@ -257,14 +382,14 @@ create_bipartiteD3_graph <- function(data, season = NULL) {
     column_to_rownames("Target") %>%
     as.matrix()
   
-  # sorting primary nodes
+  # sorting pest categories by total service count
   sort_primary <- data %>%
     group_by(Target) %>%
     summarise(Total = n(), .groups = 'drop') %>%
     arrange(desc(Total)) %>%
     pull(Target)
   
-  # sorting secondary nodes
+  # sorting neighborhoods by total service count
   sort_secondary <- data %>%
     group_by(Neighborhood) %>%
     summarise(Total = n(), .groups = 'drop') %>%
@@ -276,93 +401,113 @@ create_bipartiteD3_graph <- function(data, season = NULL) {
     sightings_matrix, 
     PrimaryLab = "Pest Type", 
     SecondaryLab = "Neighborhood", 
-    SiteNames = if (is.null(season)) "Seattle Pest Service Records, 2023" else paste("Seattle Pest Service Records,", season, "2023"),
+    SiteNames = if (is.null(season)) "Bipartite Graph of Seattle Pest Services in 2023" else paste("Bipartite Graph of Seattle Pest Services in", season, "2023"),
     SortPrimary = sort_primary,
     SortSecondary = sort_secondary,
     colouroption = "manual",
     NamedColourVector = custom_colors,
     ColourBy = 1,
     PercentageDecimals = 2,
-    MainFigSize = c(800, 475),      # main figure size
-    IndivFigSize = c(200, 400),     # individual figure size
-    BoxLabPos = c(35, 35),          # label positions (excluding SiteNames, PrimaryLab, and SecondaryLab)
-    PercPos = c(240, 210),          # percentage positions
-    MinWidth = 0,                   # min width of bars
-    Pad = 8                         # padding between bars
+    MainFigSize = c(800, 475),      
+    IndivFigSize = c(200, 400),     
+    BoxLabPos = c(35, 35),          
+    PercPos = c(240, 210),          
+    MinWidth = 0,                   
+    Pad = 8                         
   )
 }
 
 ```
 
-# Results
 
-Hover over a bar in each chart to examine how service records connect pest categories and regions. Percentages in a hovered view depend on the selected side of the chart; bar lengths represent counts of records. Differences may reflect the company's customer base, service practices, and repeat or preventive visits.
+# Full-Year and Seasonal Results
 
-## Full year
+**Hover over a *Pest Type* or *Neighborhood* to inspect its connections.**
 
 
-```{r bipartite-graph-entire-year, echo=FALSE, fig.align='center'}
+Connection widths represent service-record counts. Percentages describe the displayed *service distribution*, not the proportion of Seattle properties affected. 
+
+## Full Year: 2023
+
+```{r bipartite-graph-entire-year, echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
 
 # creating a bipartite graph for the entire year
 create_bipartiteD3_graph(sea_pests_df)
 ```
 
-Rodents accounted for **46.78%** of categorized service records, ants **31.23%**, and cockroaches **15.74%**. In this dataset, rodent services were prominent in South/Southeast and Central Seattle, ant services in West Seattle, and cockroach services downtown and in South/Southeast Seattle.
 
-## Seasonal comparison
+Rodents accounted for **46.78%** of annual records, followed by ants (**31.23%**) and cockroaches (**15.74%**). Rodent services were prominent in South/SE and Central Seattle, ants had a strong West Seattle connection, and cockroach services were concentrated in Downtown and South/SE Seattle.
 
-The figures below use the same categories and region groupings for each season.
+## Winter
 
-### Winter
-
-
-```{r bipartite-graph-winter, echo=FALSE, fig.align='center'}
+```{r bipartite-graph-winter, echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
 
 # creating bipartite graphs for each season
 create_bipartiteD3_graph(sea_pests_df, season = "Winter")
 
 ```
 
-Rodents made up **54.58%** of winter service records, followed by ants (**21.80%**) and cockroaches (**18.59%**).
 
-### Spring
+Rodents represented **54.58%** of winter records, followed by ants (**21.80%**) and cockroaches (**18.59%**). Winter had the highest rodent share of the four seasons.
 
+## Spring
 
-```{r bipartite-graph-spring, echo=FALSE, fig.align='center'}
+```{r bipartite-graph-spring, echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
 
-# creating bipartite graphs for each season
 create_bipartiteD3_graph(sea_pests_df, season = "Spring")
 
 ```
 
-Rodents remained the largest category (**46.52%**), while ants increased to **35.79%**. Cockroaches accounted for **13.93%**.
 
-### Summer
+Rodents remained the largest category (**46.52%**), while the ant share increased to **35.79%**. Cockroaches accounted for **13.93%**.
 
+## Summer
 
-```{r bipartite-graph-summer, echo=FALSE, fig.align='center'}
+```{r bipartite-graph-summer, echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
 
-# creating bipartite graphs for each season
 create_bipartiteD3_graph(sea_pests_df, season = "Summer")
 
 ```
 
-Ants became the largest category (**40.45%**), narrowly ahead of rodents (**39.80%**). Cockroaches accounted for **13.23%**.
 
-### Fall
+Ants became the leading category (**40.45%**), narrowly exceeding rodents (**39.80%**). Cockroaches accounted for **13.23%**. This was the only season in which ants surpassed rodents.
 
+## Fall
 
-```{r bipartite-graph-fall, echo=FALSE, fig.align='center'}
+```{r bipartite-graph-fall, echo=TRUE, message=FALSE, warning=FALSE, fig.align='center'}
 
-# creating bipartite graphs for each season
 create_bipartiteD3_graph(sea_pests_df, season = "Fall")
 
 ```
 
-Rodents returned to the largest share (**47.21%**); ants accounted for **25.83%** and cockroaches **17.52%**.
 
-# Interpretation and limits
+Rodents returned to the largest share (**47.21%**), followed by ants (**25.83%**) and cockroaches (**17.52%**). West Seattle remained a prominent region for ant services, while Downtown remained prominent for cockroach services.
 
-Across the company's Seattle records, rodent services led in three of four seasons; ant services led in summer. West Seattle stands out in the ant service distribution, and Downtown Seattle in the cockroach service distribution. These are **patterns in service activity**. They do not establish pest abundance or explain the causes of neighborhood differences.
+# Conclusions and Limitations
 
-The charts aggregate pest labels and neighborhoods to improve readability, which masks variation within each group. Records can include preventive treatments or repeat visits, and service coverage is shaped by the company's customers. The private data cannot be independently reproduced from this public report; the source code documents the transformation and visualization steps.
+## Main Takeaways
+
+The graphs show which pest categories accounted for the most service activity and how those services were distributed across Seattle in 2023. Rodents led in every season except summer, when ants had the largest share. Ant services had a strong West Seattle connection, while cockroach services were concentrated in Downtown Seattle.
+
+Combining geographic assignment with a two-mode network made these regional and seasonal relationships easier to explore than separate category totals alone.
+
+## Limitations
+
+Interpretation is limited by:
+
+* service demand and preventive contracts rather than a random sample of pest presence
+* repeat visits and customer mix
+* inconsistent technician-entered labels and broad category consolidation
+* geocoding quality, spatial-join misses, and region definitions created for this analysis
+* a single company's Seattle service records from 2023
+* interactive-package constraints on labels, layout, and customization
+
+These results are descriptive. They should not be used as citywide prevalence estimates or causal claims.
+
+## Data Sources
+
+**Service records:** Proprietary 2023 data from a local pest-control company. The company is not identified, and the underlying records are not publicly shared.
+
+**Neighborhood boundaries and reference map:** City of Seattle, Office of Planning and Community Development. *Neighborhood Map Atlas—Neighborhoods* (cityclerk_nma_nhoods) [GIS dataset]. Derived from the Seattle City Clerk’s Office Geographic Indexing Atlas. Available through the [Seattle City GIS Open Data Portal](https://data-seattlecitygis.opendata.arcgis.com/datasets/b4a142f592e94d39a3bf787f3c112c1d/explore). Metadata updated December 1, 2020.
+
+
